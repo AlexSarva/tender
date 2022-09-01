@@ -8,6 +8,7 @@ require (
 	github.com/andybalholm/brotli v1.0.4 // indirect
 	github.com/caarlos0/env/v6 v6.10.0 // indirect
 	github.com/go-chi/chi/v5 v5.0.7 // indirect
+	github.com/go-chi/cors v1.2.1 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.6.1 // indirect
 	github.com/google/uuid v1.3.0 // indirect

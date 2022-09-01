@@ -1,8 +1,10 @@
 package clickhousestorage
 
 import (
+	"AlexSarva/tender/models"
 	"AlexSarva/tender/utils/dbutils"
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -49,4 +51,35 @@ func (c *ClickHouse) Ping() bool {
 		return false
 	}
 	return true
+}
+
+func (c *ClickHouse) GetOrgInfo(inn string) (models.Organization, error) {
+	log.Printf("%T", inn)
+	log.Printf("%v", inn)
+	ctx := clickhouse.Context(context.Background(), clickhouse.WithSettings(clickhouse.Settings{
+		"max_block_size": 1000,
+	}), clickhouse.WithProgress(func(p *clickhouse.Progress) {
+		fmt.Println("progress: ", p)
+	}))
+	var orgInfo []models.Organization
+	err := c.Database.Select(ctx, &orgInfo, `
+select ogrn, inn, kpp,
+       replaceAll(case when short_name = '' then full_name else short_name end,'&quot;','"') short_name,
+       replaceAll(full_name,'&quot;','"') full_name, reg_date, end_date, okved_id, capital,
+       cast(region as Int8) region_id,
+       replaceAll(case when area = '' then '' else area end ||
+       case when city = '' then '' when area = '' then city else ', '||city end ||
+       case when settlement = '' then '' when city = '' then settlement else ', '||settlement end ||
+       case when street = '' then '' when settlement ='' then street else ', '||street end ||
+       case when house = '' then '' else ', '||house end ||
+       case when corpus in ('','-') then '' else ', '||corpus end ||
+       case when apartment in ('','-') then '' else ', пом. '||apartment end,'&quot;','"')  address
+       from reestr_company.org_full
+        where inn = $1
+`, inn)
+	if err != nil {
+		log.Println(err)
+	}
+	log.Printf("%+v\n", orgInfo)
+	return orgInfo[0], nil
 }

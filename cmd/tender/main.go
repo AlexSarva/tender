@@ -20,17 +20,18 @@ func main() {
 	}
 	// Rewrite from start parameters
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "host:port to listen on")
-	flag.StringVar(&cfg.Database, "d", cfg.Database, "database config")
+	flag.StringVar(&cfg.DatabasePG, "dbpg", cfg.DatabasePG, "postgresql database config")
+	flag.StringVar(&cfg.DatabaseClick, "dbclick", cfg.DatabaseClick, "clickhouse database config")
 	flag.Parse()
 	log.Printf("%+v\n", cfg)
 	log.Printf("ServerAddress: %v", cfg.ServerAddress)
-	DB, dbErr := app.NewStorage(cfg.Database)
+	DBClick, dbErr := app.NewStorage("CLICK", cfg)
 	if dbErr != nil {
 		log.Fatal(dbErr)
 	}
-	ping := DB.Repo.Ping()
+	ping := DBClick.Repo.Ping()
 	log.Println(ping)
-	MainApp := server.NewServer(&cfg, DB)
+	MainApp := server.NewServer(&cfg, DBClick)
 	if runErr := MainApp.Run(); runErr != nil {
 		log.Printf("%s", runErr.Error())
 	}

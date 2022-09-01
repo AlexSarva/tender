@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"AlexSarva/tender/internal/app"
+	"AlexSarva/tender/storage/storagepg"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
@@ -9,9 +10,11 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 )
 
 // messageResponse additional respond generator
@@ -55,10 +58,89 @@ func readBodyBytes(r *http.Request) (io.ReadCloser, error) {
 // gzipContentTypes request types that support data compression
 var gzipContentTypes = "application/x-gzip, application/javascript, application/json, text/css, text/html, text/plain, text/xml"
 
+func GetOrganizationInfo(database *app.Database) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%+v\n", r.Header)
+		headerContentType := r.Header.Get("Content-Type")
+		if !strings.Contains("application/json, application/x-gzip", headerContentType) {
+			messageResponse(w, "Content Type is not application/json or application/x-gzip", "application/json", http.StatusBadRequest)
+			return
+		}
+		inn := chi.URLParam(r, "inn")
+		if len(inn) == 0 {
+			messageResponse(w, "Problem in inn", "application/json", http.StatusBadRequest)
+			//	return
+		}
+
+		//var inn models.INNRequest
+		//var unmarshalErr *json.UnmarshalTypeError
+		//
+		//b, err := readBodyBytes(r)
+		//if err != nil {
+		//	messageResponse(w, "Problem in body", "application/json", http.StatusBadRequest)
+		//	return
+		//}
+		//
+		//decoder := json.NewDecoder(b)
+		//decoder.DisallowUnknownFields()
+		//errDecode := decoder.Decode(&inn)
+		//
+		//if errDecode != nil {
+		//	if errors.As(errDecode, &unmarshalErr) {
+		//		messageResponse(w, "Bad Request. Wrong Type provided for field "+unmarshalErr.Field, "application/json", http.StatusBadRequest)
+		//	} else {
+		//		messageResponse(w, "Bad Request. "+errDecode.Error(), "application/json", http.StatusBadRequest)
+		//	}
+		//	return
+		//}
+
+		//// Проверка авторизации по токену
+		//userID, tokenErr := GetToken(r)
+		//if tokenErr != nil {
+		//	messageResponse(w, "User unauthorized: "+tokenErr.Error(), "application/json", http.StatusUnauthorized)
+		//	return
+		//}
+		log.Printf("%+v\n", inn)
+		orgInfo, orgInfoErr := database.Repo.GetOrgInfo(inn)
+		if orgInfoErr != nil {
+			if orgInfoErr == storagepg.ErrNoValues {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			messageResponse(w, "Internal Server Error: "+orgInfoErr.Error(), "application/json", http.StatusInternalServerError)
+			return
+		}
+
+		orgInfoRes, orgInfoResErr := json.Marshal(orgInfo)
+		if orgInfoResErr != nil {
+			panic(orgInfoResErr)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(orgInfoRes)
+	}
+}
+
+func MyAllowOriginFunc(r *http.Request, origin string) bool {
+	if origin == "http://localhost:3000" {
+		return true
+	}
+	return false
+}
+
 // MyHandler - the main handler of the server
 // contains middlewares and all routes
 func MyHandler(database *app.Database) *chi.Mux {
 	r := chi.NewRouter()
+	r.Use(cors.Handler(cors.Options{
+		AllowOriginFunc:  MyAllowOriginFunc,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300, // Maximum value not ignored by any of major browsers
+	}))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
@@ -67,9 +149,10 @@ func MyHandler(database *app.Database) *chi.Mux {
 	r.Use(middleware.AllowContentType("application/json", "text/plain", "application/x-gzip"))
 	r.Use(middleware.Compress(5, gzipContentTypes))
 	r.Mount("/debug", middleware.Profiler())
-
-	r.Post("/api/user/register", UserRegistration(database))
-	r.Get("/api/user/orders", GetOrders(database))
+	r.Get("/api/orgs/info/{inn}", GetOrganizationInfo(database))
+	//
+	//r.Post("/api/user/register", UserRegistration(database))
+	//r.Get("/api/user/orders", GetOrders(database))
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
