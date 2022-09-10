@@ -19,14 +19,13 @@ var ErrNoAuth = errors.New("no Bearer token")
 // ErrNoCookie error that occurs when no cookie presents in Header
 var ErrNoCookie = errors.New("no cookie")
 
-// GenerateCookie function of generating cookie for user when he successfully registered and authenticated
+// GenerateToken function of generating token for user when he successfully registered and authenticated
 // based at UserID (uuid format)
-// returns Cookie format for respond and time of expiration
-func GenerateCookie(userID uuid.UUID) (http.Cookie, time.Time) {
+// returns Token format for respond and time of expiration
+func GenerateToken(userID uuid.UUID) (string, time.Time) {
 	session := crypto.Encrypt(userID, crypto.SecretKey)
 	expiration := time.Now().Add(365 * 24 * time.Hour)
-	cookie := http.Cookie{Name: "session", Value: session, Expires: expiration, Path: "/"}
-	return cookie, expiration
+	return session, expiration
 }
 
 // GetCookie cookie selection function from Header

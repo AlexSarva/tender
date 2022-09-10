@@ -1,6 +1,7 @@
 package server
 
 import (
+	"AlexSarva/tender/admin"
 	"AlexSarva/tender/handlers"
 	"AlexSarva/tender/internal/app"
 	"AlexSarva/tender/models"
@@ -18,9 +19,9 @@ type Server struct {
 }
 
 // NewServer Initializing new server instance
-func NewServer(cfg *models.Config, database *app.Database) *Server {
+func NewServer(cfg *models.Config, database *app.Database, adminDatabase *admin.PostgresDB) *Server {
 
-	handler := handlers.MyHandler(database)
+	handler := handlers.MyHandler(database, adminDatabase)
 	server := http.Server{
 		Addr:         cfg.ServerAddress,
 		Handler:      handler,

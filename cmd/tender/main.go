@@ -1,6 +1,7 @@
 package main
 
 import (
+	"AlexSarva/tender/admin"
 	"AlexSarva/tender/internal/app"
 	"AlexSarva/tender/models"
 	"AlexSarva/tender/server"
@@ -27,11 +28,12 @@ func main() {
 	log.Printf("ServerAddress: %v", cfg.ServerAddress)
 	DBClick, dbErr := app.NewStorage("CLICK", cfg)
 	if dbErr != nil {
-		log.Fatal(dbErr)
+		log.Fatal(dbErr.Error() + "говно")
 	}
+	adminPG := admin.NewAdminDBConnection(cfg.DatabasePG)
 	ping := DBClick.Repo.Ping()
 	log.Println(ping)
-	MainApp := server.NewServer(&cfg, DBClick)
+	MainApp := server.NewServer(&cfg, DBClick, adminPG)
 	if runErr := MainApp.Run(); runErr != nil {
 		log.Printf("%s", runErr.Error())
 	}

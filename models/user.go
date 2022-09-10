@@ -11,25 +11,28 @@ type Status struct {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	Username  string    `json:"login" db:"username"`
-	Password  string    `json:"password" db:"passwd"`
-	Cookie    string    `json:"cookie" db:"cookie"`
-	CookieExp time.Time `json:"cookie_expires" db:"cookie_expires"`
+	ID       uuid.UUID `json:"id" db:"id"`
+	Username string    `json:"username" db:"username"`
+	Email    string    `json:"email" db:"email"`
+	Password string    `json:"password" db:"passwd"`
+	Token    string    `json:"token" db:"token"`
+	TokenExp time.Time `json:"token_expires" db:"token_expires"`
 }
 
-type TestUser struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	Username  string    `json:"login" db:"username"`
-	Password  string    `json:"password" db:"passwd"`
-	Cookie    string    `json:"cookie" db:"cookie"`
-	CookieExp time.Time `json:"cookie_expires" db:"cookie_expires"`
-	Token     string    `json:"token"`
+type UserLogin struct {
+	Email    string `json:"email" db:"email"`
+	Password string `json:"password" db:"passwd"`
 }
 
 type Token struct {
-	TokenType   string `json:"token_type"`
-	AuthToken   string `json:"auth_token"`
-	GeneratedAt string `json:"generated_at"`
-	ExpiresAt   string `json:"expires_at"`
+	Username string    `json:"username" db:"username"`
+	Email    string    `json:"email" db:"email"`
+	Type     string    `json:"type"`
+	Token    string    `json:"token" db:"token"`
+	TokenExp time.Time `json:"token_expires" db:"token_expires"`
+}
+
+type UserInfo struct {
+	Username string `json:"username" db:"username"`
+	Email    string `json:"email" db:"email"`
 }

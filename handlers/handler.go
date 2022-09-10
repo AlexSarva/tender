@@ -1,8 +1,8 @@
 package handlers
 
 import (
+	"AlexSarva/tender/admin"
 	"AlexSarva/tender/internal/app"
-	"AlexSarva/tender/storage/storagepg"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
@@ -103,7 +103,7 @@ func GetOrganizationInfo(database *app.Database) http.HandlerFunc {
 		log.Printf("%+v\n", inn)
 		orgInfo, orgInfoErr := database.Repo.GetOrgInfo(inn)
 		if orgInfoErr != nil {
-			if orgInfoErr == storagepg.ErrNoValues {
+			if orgInfoErr == admin.ErrNoValues {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -123,7 +123,7 @@ func GetOrganizationInfo(database *app.Database) http.HandlerFunc {
 }
 
 func MyAllowOriginFunc(r *http.Request, origin string) bool {
-	if origin == "http://localhost:3000" {
+	if origin == "http://localhost:3000" || origin == "http://10.2.3.197:3000" {
 		return true
 	}
 	return false
@@ -131,7 +131,7 @@ func MyAllowOriginFunc(r *http.Request, origin string) bool {
 
 // MyHandler - the main handler of the server
 // contains middlewares and all routes
-func MyHandler(database *app.Database) *chi.Mux {
+func MyHandler(database *app.Database, adminDatabase *admin.PostgresDB) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(cors.Handler(cors.Options{
 		AllowOriginFunc:  MyAllowOriginFunc,
@@ -151,7 +151,9 @@ func MyHandler(database *app.Database) *chi.Mux {
 	r.Mount("/debug", middleware.Profiler())
 	r.Get("/api/orgs/info/{inn}", GetOrganizationInfo(database))
 	//
-	//r.Post("/api/user/register", UserRegistration(database))
+	r.Post("/api/user/register", UserRegistration(adminDatabase))
+	r.Post("/api/user/login", UserAuthentication(adminDatabase))
+	r.Get("/api/users/me", GetUserInfo(adminDatabase))
 	//r.Get("/api/user/orders", GetOrders(database))
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

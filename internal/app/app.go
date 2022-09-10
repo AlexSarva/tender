@@ -15,13 +15,6 @@ type Database struct {
 
 // NewStorage generate new instance of database
 func NewStorage(dbName string, cfg models.Config) (*Database, error) {
-	//if dbName == "PG" {
-	//	DB := storagepg.NewPostgresDBConnection(cfg.DatabasePG)
-	//	fmt.Println("Using PostgreSQL Database")
-	//	return &Database{
-	//		Repo: DB,
-	//	}, nil
-	//} else
 	if dbName == "CLICK" {
 		DB := clickhousestorage.MyClickHouseDB(cfg.DatabaseClick)
 		fmt.Println("Using ClickHouse Database")

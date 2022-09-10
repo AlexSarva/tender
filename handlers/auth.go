@@ -1,5 +1,20 @@
 package handlers
 
+import (
+	"AlexSarva/tender/admin"
+	"AlexSarva/tender/models"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+)
+
 const timeLayout = "2006-01-02 15:04:05"
 
 // UserRegistration - user registration method
@@ -19,154 +34,184 @@ const timeLayout = "2006-01-02 15:04:05"
 // 400 - invalid request format;
 // 409 - login is already taken;
 // 500 - an internal server error.
-//func UserRegistration(database *app.Database) http.HandlerFunc {
-//	return func(w http.ResponseWriter, r *http.Request) {
-//		headerContentType := r.Header.Get("Content-Type")
-//		if !strings.Contains("application/json, application/x-gzip", headerContentType) {
-//			messageResponse(w, "Content Type is not application/json or application/x-gzip", "application/json", http.StatusBadRequest)
-//			return
-//		}
+func UserRegistration(database *admin.PostgresDB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		headerContentType := r.Header.Get("Content-Type")
+		if !strings.Contains("application/json, application/x-gzip", headerContentType) {
+			messageResponse(w, "Content Type is not application/json or application/x-gzip", "application/json", http.StatusBadRequest)
+			return
+		}
+
+		var user models.User
+		var unmarshalErr *json.UnmarshalTypeError
+
+		b, err := readBodyBytes(r)
+		if err != nil {
+			messageResponse(w, "Problem in body", "application/json", http.StatusBadRequest)
+			return
+		}
+
+		decoder := json.NewDecoder(b)
+		decoder.DisallowUnknownFields()
+		errDecode := decoder.Decode(&user)
+
+		if errDecode != nil {
+			if errors.As(errDecode, &unmarshalErr) {
+				messageResponse(w, "Bad Request. Wrong Type provided for field "+unmarshalErr.Field, "application/json", http.StatusBadRequest)
+			} else {
+				messageResponse(w, "Bad Request. "+errDecode.Error(), "application/json", http.StatusBadRequest)
+			}
+			return
+		}
+
+		userID := uuid.New()
+		userToken, userTokenExp := GenerateToken(userID)
+		hashedPassword, bcrypteErr := bcrypt.GenerateFromPassword([]byte(user.Password), 4)
+		if bcrypteErr != nil {
+			log.Println(bcrypteErr)
+		}
+
+		user.ID, user.Password, user.Token, user.TokenExp = userID, string(hashedPassword), userToken, userTokenExp
+
+		newUserErr := database.RegisterUser(&user)
+		if newUserErr != nil {
+			if newUserErr == admin.ErrDuplicatePK {
+				messageResponse(w, "login is already busy", "application/json", http.StatusConflict)
+				return
+			}
+			messageResponse(w, "Internal Server Error "+newUserErr.Error(), "application/json", http.StatusInternalServerError)
+			return
+		}
+
+		tokenDetails := models.Token{
+			Username: user.Username,
+			Email:    user.Email,
+			Type:     "Bearer",
+			Token:    userToken,
+			TokenExp: userTokenExp,
+		}
+		jsonResp, _ := json.Marshal(tokenDetails)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Authorization", tokenDetails.Type+" "+userToken)
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonResp)
+	}
+}
+
+// UserAuthentication - user authentication method
 //
-//		var user models.User
-//		var unmarshalErr *json.UnmarshalTypeError
+// Handler POST /api/user/login
 //
-//		b, err := readBodyBytes(r)
-//		if err != nil {
-//			messageResponse(w, "Problem in body", "application/json", http.StatusBadRequest)
-//			return
-//		}
+// Authentication is performed by a login/password pair.
+// Request format:
 //
-//		decoder := json.NewDecoder(b)
-//		decoder.DisallowUnknownFields()
-//		errDecode := decoder.Decode(&user)
+//	{"login": "<login>",
+//	"password": "<password>"}
 //
-//		if errDecode != nil {
-//			if errors.As(errDecode, &unmarshalErr) {
-//				messageResponse(w, "Bad Request. Wrong Type provided for field "+unmarshalErr.Field, "application/json", http.StatusBadRequest)
-//			} else {
-//				messageResponse(w, "Bad Request. "+errDecode.Error(), "application/json", http.StatusBadRequest)
-//			}
-//			return
-//		}
-//
-//		userID := uuid.New()
-//		userCookie, userCookieExp := GenerateCookie(userID)
-//		hashedPassword, bcrypteErr := bcrypt.GenerateFromPassword([]byte(user.Password), 4)
-//		if bcrypteErr != nil {
-//			log.Println(bcrypteErr)
-//		}
-//
-//		user.ID, user.Password, user.Cookie, user.CookieExp = userID, string(hashedPassword), userCookie.String(), userCookieExp
-//
-//		newUserErr := database.Repo.NewUser(&user)
-//		if newUserErr != nil {
-//			if newUserErr == storagepg.ErrDuplicatePK {
-//				messageResponse(w, "login is already busy", "application/json", http.StatusConflict)
-//				return
-//			}
-//			messageResponse(w, "Internal Server Error "+newUserErr.Error(), "application/json", http.StatusInternalServerError)
-//			return
-//		}
-//
-//		generatedAt := time.Now().Format(timeLayout)
-//		expiresAt := userCookie.Expires.Format(timeLayout)
-//		tokenDetails := models.Token{
-//			TokenType:   "Bearer",
-//			AuthToken:   userCookie.Value,
-//			GeneratedAt: generatedAt,
-//			ExpiresAt:   expiresAt,
-//		}
-//		jsonResp, _ := json.Marshal(tokenDetails)
-//		w.Header().Set("Content-Type", "application/json")
-//		w.Header().Set("Authorization", tokenDetails.TokenType+" "+tokenDetails.AuthToken)
-//		w.WriteHeader(http.StatusOK)
-//		w.Write(jsonResp)
-//	}
-//}
-//
-//// UserAuthentication - user authentication method
-////
-//// Handler POST /api/user/login
-////
-//// Authentication is performed by a login/password pair.
-//// Request format:
-////
-////	{"login": "<login>",
-////	"password": "<password>"}
-////
-//// Possible response codes:
-//// 200 - user successfully authenticated;
-//// 400 - invalid request format;
-//// 401 - invalid login/password pair;
-//// 500 - an internal server error.
-//func UserAuthentication(database *app.Database) http.HandlerFunc {
-//	return func(w http.ResponseWriter, r *http.Request) {
-//		headerContentType := r.Header.Get("Content-Type")
-//		if !strings.Contains("application/json, application/x-gzip", headerContentType) {
-//			messageResponse(w, "Content Type is not application/json or application/x-gzip", "application/json", http.StatusBadRequest)
-//			return
-//		}
-//
-//		var user models.User
-//		var unmarshalErr *json.UnmarshalTypeError
-//
-//		b, err := readBodyBytes(r)
-//		if err != nil {
-//			messageResponse(w, "Problem in body", "application/json", http.StatusBadRequest)
-//			return
-//		}
-//
-//		decoder := json.NewDecoder(b)
-//		decoder.DisallowUnknownFields()
-//		errDecode := decoder.Decode(&user)
-//
-//		if errDecode != nil {
-//			if errors.As(errDecode, &unmarshalErr) {
-//				messageResponse(w, "Bad Request. Wrong Type provided for field "+unmarshalErr.Field, "application/json", http.StatusBadRequest)
-//			} else {
-//				messageResponse(w, "Bad Request. "+errDecode.Error(), "application/json", http.StatusBadRequest)
-//			}
-//			return
-//		}
-//
-//		userDB, userDBErr := database.Repo.GetUser(user.Username)
-//		if userDBErr != nil {
-//			if errors.Is(userDBErr, sql.ErrNoRows) {
-//				messageResponse(w, "User unauthorized: "+user.Username+", please register at /api/user/register", "application/json", http.StatusUnauthorized)
-//				return
-//			}
-//			messageResponse(w, "Internal Server Error: "+userDBErr.Error(), "application/json", http.StatusInternalServerError)
-//			return
-//		}
-//
-//		cryptErr := bcrypt.CompareHashAndPassword([]byte(userDB.Password), []byte(user.Password))
-//		if cryptErr != nil {
-//			messageResponse(w, "User unauthorized: "+cryptErr.Error(), "application/json", http.StatusUnauthorized)
-//			return
-//		}
-//		// TODO Предусмотреть обновление куки
-//		if userDB.CookieExp.Before(time.Now()) {
-//			log.Println("cookie expired")
-//		}
-//
-//		// Авторизация по токену
-//		generatedAt := time.Now().Format(timeLayout)
-//		expiresAt := userDB.CookieExp.Format(timeLayout)
-//		cookieSession, cookieSessionErr := ParseCookie(userDB.Cookie)
-//		if cookieSessionErr != nil {
-//			log.Println(cookieSessionErr)
-//		}
-//
-//		tokenDetails := models.Token{
-//			TokenType:   "Bearer",
-//			AuthToken:   cookieSession,
-//			GeneratedAt: generatedAt,
-//			ExpiresAt:   expiresAt,
-//		}
-//		jsonResp, _ := json.Marshal(tokenDetails)
-//		w.Header().Set("Content-Type", "application/json")
-//		w.Header().Set("Authorization", tokenDetails.TokenType+" "+tokenDetails.AuthToken)
-//		w.WriteHeader(http.StatusOK)
-//		w.Write(jsonResp)
-//	}
-//}
+// Possible response codes:
+// 200 - user successfully authenticated;
+// 400 - invalid request format;
+// 401 - invalid login/password pair;
+// 500 - an internal server error.
+func UserAuthentication(database *admin.PostgresDB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		headerContentType := r.Header.Get("Content-Type")
+		if !strings.Contains("application/json, application/x-gzip", headerContentType) {
+			messageResponse(w, "Content Type is not application/json or application/x-gzip", "application/json", http.StatusBadRequest)
+			return
+		}
+
+		var user models.UserLogin
+		var unmarshalErr *json.UnmarshalTypeError
+
+		b, err := readBodyBytes(r)
+		if err != nil {
+			messageResponse(w, "Problem in body", "application/json", http.StatusBadRequest)
+			return
+		}
+
+		decoder := json.NewDecoder(b)
+		decoder.DisallowUnknownFields()
+		errDecode := decoder.Decode(&user)
+		log.Printf("%+v\n", user)
+
+		if errDecode != nil {
+			if errors.As(errDecode, &unmarshalErr) {
+				messageResponse(w, "Bad Request. Wrong Type provided for field "+unmarshalErr.Field, "application/json", http.StatusBadRequest)
+			} else {
+				messageResponse(w, "Bad Request. "+errDecode.Error(), "application/json", http.StatusBadRequest)
+			}
+			return
+		}
+
+		userDB, userDBErr := database.LoginUser(user.Email)
+		if userDBErr != nil {
+			if errors.Is(userDBErr, sql.ErrNoRows) {
+				messageResponse(w, "email doesnt exist", "application/json", http.StatusUnauthorized)
+				return
+			}
+			messageResponse(w, "Internal Server Error: "+userDBErr.Error(), "application/json", http.StatusInternalServerError)
+			return
+		}
+
+		cryptErr := bcrypt.CompareHashAndPassword([]byte(userDB.Password), []byte(user.Password))
+		if cryptErr != nil {
+			messageResponse(w, "password doesnt match", "application/json", http.StatusUnauthorized)
+			return
+		}
+		// TODO Предусмотреть обновление куки
+		if userDB.TokenExp.Before(time.Now()) {
+			log.Println("cookie expired")
+		}
+
+		// Авторизация по токену
+		token, tokenExp := userDB.Token, userDB.TokenExp
+
+		tokenDetails := models.Token{
+			Username: userDB.Username,
+			Email:    userDB.Email,
+			Type:     "Bearer",
+			Token:    token,
+			TokenExp: tokenExp,
+		}
+		jsonResp, _ := json.Marshal(tokenDetails)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Authorization", tokenDetails.Type+" "+token)
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonResp)
+	}
+}
+
+func GetUserInfo(database *admin.PostgresDB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		headerContentType := r.Header.Get("Content-Length")
+		if len(headerContentType) != 0 {
+			messageResponse(w, "Content-Length is not equal 0", "application/json", http.StatusBadRequest)
+			return
+		}
+
+		// Проверка авторизации по токену
+		userID, tokenErr := GetToken(r)
+		if tokenErr != nil {
+			messageResponse(w, "User unauthorized: "+tokenErr.Error(), "application/json", http.StatusUnauthorized)
+			return
+		}
+
+		userInfo, userInfoErr := database.GetUserInfo(userID)
+		if userInfoErr != nil {
+			if errors.Is(userInfoErr, sql.ErrNoRows) {
+				messageResponse(w, "user doesnt exist", "application/json", http.StatusUnauthorized)
+				return
+			}
+			messageResponse(w, "Internal Server Error: "+userInfoErr.Error(), "application/json", http.StatusInternalServerError)
+			return
+		}
+
+		userInfo.Type = "Bearer"
+
+		jsonResp, _ := json.Marshal(userInfo)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonResp)
+	}
+}
